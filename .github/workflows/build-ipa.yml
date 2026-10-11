@@ -14,7 +14,7 @@ jobs:
 
       - name: Install toolchain (lld/meson/ninja/xcodeproj)
         run: |
-          brew install lld
+          brew install lld libarchive
           python3 -m pip install --break-system-packages --upgrade "meson==1.6.1" ninja
           gem install xcodeproj --no-document
           echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
