@@ -310,17 +310,31 @@ static NSString *const kDSHUserAgentSuffix = @" DSH-iOS/1.0";
 }
 
 - (void)loadHarness {
-    NSURL *url = DSHHarness.shared.baseURL;
-    if (url == nil)
-        return;
     [self.overlay showStarting:@"Loading the interface…"];
     [self.overlay setProgressStartedAt:nil expected:0];
     self.loadedPort = DSHHarness.shared.port;
     self.pageLoaded = NO;
     self.pageLoadGeneration++;
-    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-    req.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
-    [self.webView loadRequest:req];
+    NSUInteger gen = self.pageLoadGeneration;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        // dsh 0.2.x prints its auth token *after* the port starts answering.
+        // Loading before it exists yields a bare "authentication required"
+        // page (white screen). Wait for the token (up to 30 s) so the first
+        // load is authenticated; fall back to the bare URL if it never comes.
+        NSURL *url = nil;
+        NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:30];
+        while (url == nil && [deadline timeIntervalSinceNow] > 0) {
+            url = DSHHarness.shared.launchURL;
+            if (url == nil) [NSThread sleepForTimeInterval:0.25];
+        }
+        if (url == nil) url = DSHHarness.shared.baseURL;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (gen != self.pageLoadGeneration || self.loadedPort != DSHHarness.shared.port) return;
+            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+            req.cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+            [self.webView loadRequest:req];
+        });
+    });
 }
 
 - (void)sceneDidBecomeActive {
@@ -540,6 +554,20 @@ static const NSTimeInterval kActivityIndicatorVisible = 6;
     [DSHHarness.shared.log append:[NSString stringWithFormat:@"[perf] web interface loaded (harness %.3fs)", DSHHarness.shared.lastStartupDuration]];
     [DSHStartupMetrics.shared mark:@"web_ready"];
     [self.overlay hide];
+    // dsh 0.2.x answers unauthenticated loads with a bare
+    // "authentication required" page. If we raced the token (first launch),
+    // reload once it has been captured.
+    __weak typeof(self) weakSelf = self;
+    [self.webView evaluateJavaScript:@"document.body ? document.body.innerText : ''"
+                   completionHandler:^(id result, NSError *error) {
+        NSString *text = [result isKindOfClass:NSString.class] ? result : @"";
+        if ([text containsString:@"authentication required"]) {
+            [DSHHarness.shared.log append:@"[dsh-ios] unauthenticated page detected; reloading with token"];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [weakSelf loadHarness];
+            });
+        }
+    }];
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {

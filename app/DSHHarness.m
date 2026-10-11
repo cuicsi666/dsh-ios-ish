@@ -32,6 +32,7 @@ NSString *DSHHarnessStateName(DSHHarnessState state) {
 @property (nonatomic, readwrite) DSHHarnessState state;
 @property (nonatomic, readwrite) uint16_t port;
 @property (nonatomic, readwrite) DSHLogBuffer *log;
+@property (nonatomic, copy, readwrite, nullable) NSString *serverToken;
 @property (nonatomic, readwrite) NSUInteger restartCount;
 @property (nonatomic, readwrite, nullable) NSString *lastError;
 @property (nonatomic, readwrite) int guestPid;
@@ -86,6 +87,16 @@ NSString *DSHHarnessStateName(DSHHarnessState state) {
     if (self.port == 0)
         return nil;
     return [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%u/", self.port]];
+}
+
+- (NSString *)serverToken {
+    return _serverToken;
+}
+
+- (NSURL *)launchURL {
+    if (self.port == 0 || self.serverToken.length == 0)
+        return nil;
+    return [NSURL URLWithString:[NSString stringWithFormat:@"http://127.0.0.1:%u/?token=%@", self.port, self.serverToken]];
 }
 
 - (void)setState:(DSHHarnessState)state {
@@ -171,6 +182,18 @@ NSString *DSHHarnessStateName(DSHHarnessState state) {
                                   environment:env
                                          line:^(NSString *line, BOOL isStdErr) {
         [weakSelf.log append:line];
+        // Capture the auth token dsh 0.2.x prints on stdout after the port
+        // answers: "dsh web: http://127.0.0.1:3080/?token=…"
+        NSRange r = [line rangeOfString:@"token="];
+        if (r.location != NSNotFound) {
+            NSString *token = [line substringFromIndex:NSMaxRange(r)];
+            NSRange ws = [token rangeOfCharacterFromSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (ws.location != NSNotFound) token = [token substringToIndex:ws.location];
+            if (token.length >= 6 && ![token isEqualToString:weakSelf.serverToken]) {
+                weakSelf.serverToken = token;
+                [weakSelf.log append:@"[dsh-ios] auth token captured"];
+            }
+        }
     } exit:^(int exitCode) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf processExitedWithCode:exitCode generation:generation];
