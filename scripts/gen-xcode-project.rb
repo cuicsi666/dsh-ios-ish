@@ -114,7 +114,7 @@ Dir[(app_dir + '*.h').to_s].sort.each { |f| app_group.new_file(File.basename(f))
 xcconfig_ref = app_group.new_file('AppDSH.xcconfig')
 app_group.new_file('Info.plist')
 app_group.new_file('DSH.entitlements')
-app_resource_refs = %w[DSHAssets.xcassets DSHLaunchScreen.storyboard PrivacyInfo.xcprivacy].map { |f| app_group.new_file(f) }
+app_resource_refs = %w[DSHAssets.xcassets DSHLaunchScreen.storyboard PrivacyInfo.xcprivacy app/silence.wav].map { |f| app_group.new_file(f) }
 project.main_group.new_file('README.md')
 project.main_group.new_file('Makefile')
 scripts_group = project.main_group.new_group('scripts', 'scripts')
@@ -147,6 +147,10 @@ system_frameworks.each do |path|
   ref.source_tree = 'SDKROOT'
   dsh.frameworks_build_phase.add_file_reference(ref, true)
 end
+# 静音保活需要 AVFoundation
+avf = project.frameworks_group.new_file('AVFoundation.framework')
+avf.source_tree = 'SDKROOT'
+dsh.frameworks_build_phase.add_file_reference(avf, true)
 dsh.add_dependency(libarchive_target)
 product_group = project.root_object.project_references.find { |r| r[:project_ref] == libarchive_ref }[:product_group]
 libarchive_product = product_group.children.find { |c| c.path.to_s == 'libarchive.a' } or abort 'libarchive.a proxy missing'

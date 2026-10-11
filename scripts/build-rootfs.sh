@@ -19,7 +19,7 @@ ALPINE_VER=3.21
 ALPINE_TARBALL="alpine-minirootfs-${ALPINE_VER}.0-aarch64.tar.gz"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VER}/releases/aarch64/${ALPINE_TARBALL}"
 # Pinned dsh release; bump together with package-lock.json under rootfs/staging.
-DSH_VERSION="${DSH_VERSION:-0.1.0-rc.7}"
+DSH_VERSION="${DSH_VERSION:-0.2.0-rc.2}"
 
 log() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }

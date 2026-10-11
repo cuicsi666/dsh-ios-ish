@@ -13,6 +13,8 @@
 #import "DSHTurnPresence.h"
 #import "DSHRootUpgrader.h"
 #import "DSHStartupMetrics.h"
+#import "DSHSidebarViewController.h"
+#import "DSHKeepAlive.h"
 #import "DSHStatusOverlayView.h"
 #import "TerminalViewController.h"
 #import "AppDelegate.h"
@@ -128,10 +130,10 @@ static NSString *const kDSHUserAgentSuffix = @" DSH-iOS/1.0";
     terminal.accessibilityLabel = @"Terminal";
     self.terminalButton = terminal;
 
-    UIButton *menu = [self barButtonWithSymbol:@"ellipsis.circle" action:nil identifier:@"dsh.menu"];
+    UIButton *menu = [self barButtonWithSymbol:@"ellipsis.circle" action:@selector(presentSidebar) identifier:@"dsh.menu"];
     menu.accessibilityLabel = @"More";
-    menu.showsMenuAsPrimaryAction = YES;
-    menu.menu = [self buildMenu];
+    menu.showsMenuAsPrimaryAction = NO;   // 点按=侧栏抽屉；长按=完整菜单
+    menu.menu = [self buildMenu];   // 长按仍可用完整菜单；点按打开侧栏面板
     self.menuButton = menu;
 
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[dot, title, [UIView new], activity, terminal, menu]];
@@ -177,6 +179,29 @@ static NSString *const kDSHUserAgentSuffix = @" DSH-iOS/1.0";
     if (action)
         [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     return button;
+}
+
+- (void)presentSidebar {
+    __weak typeof(self) weakSelf = self;
+    NSDictionary<NSString *, void (^)(void)> *actions = @{
+        @"reload":       ^{ [weakSelf reloadWebView]; },
+        @"terminal":     ^{ [weakSelf presentTerminal]; },
+        @"capabilities": ^{ [weakSelf presentCapabilities]; },
+        @"activity":     ^{ [weakSelf presentActivity]; },
+        @"log":          ^{ [weakSelf presentLog]; },
+        @"restart":      ^{ [weakSelf confirmRestart]; },
+        @"repair":       ^{ [weakSelf confirmRepair]; },
+    };
+    DSHSidebarViewController *sidebar = [[DSHSidebarViewController alloc] initWithActions:actions];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:sidebar];
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    UISheetPresentationController *sheet = nav.sheetPresentationController;
+    if (sheet) {
+        sheet.detents = @[UISheetPresentationControllerDetent.mediumDetent,
+                          UISheetPresentationControllerDetent.largeDetent];
+        sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+    }
+    [self presentViewController:nav animated:YES completion:nil];
 }
 
 - (UIMenu *)buildMenu {

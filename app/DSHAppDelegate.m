@@ -7,6 +7,7 @@
 #import "DSHBootCoordinator.h"
 #import "DSHHarness.h"
 #import "DSHRootViewController.h"
+#import "DSHKeepAlive.h"
 
 static NSString *const kCapabilityPreferenceRepair = @"DSHCapabilityPreferenceRepair.2";
 
@@ -48,6 +49,8 @@ static void DSHRepairPreferencesPollutedByLegacyTests(void) {
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     if ([NSUserDefaults.standardUserDefaults boolForKey:@"recovery"])
         return YES;
+    // 静音保活（后台不挂起 → guest 存活 → 回前台秒开），受用户开关控制
+    [DSHKeepAlive.shared apply];
     // Kicks off image import → kernel boot → data migration → harness start.
     [DSHBootCoordinator.shared start];
     return YES;
