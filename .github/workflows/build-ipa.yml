@@ -14,11 +14,12 @@ jobs:
 
       - name: Install toolchain (lld/meson/ninja/xcodeproj)
         run: |
-          brew install lld meson ninja
+          brew install lld
+          python3 -m pip install --break-system-packages --upgrade "meson==1.6.1" ninja
           gem install xcodeproj --no-document
-          echo "$(brew --prefix)/opt/lld/bin" >> "$GITHUB_PATH"
-          ld.lld --version || true
+          echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
           meson --version
+          ld.lld --version || true
 
       - name: Cache guest rootfs (Alpine+Node22+dsh)
         id: rootfs-cache
