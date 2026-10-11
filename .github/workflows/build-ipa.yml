@@ -1,0 +1,76 @@
+name: build-ipa
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain (lld/meson/ninja/xcodeproj)
+        run: |
+          brew install lld meson ninja
+          gem install xcodeproj --no-document
+          echo "$(brew --prefix)/opt/lld/bin" >> "$GITHUB_PATH"
+          ld.lld --version || true
+          meson --version
+
+      - name: Cache guest rootfs (Alpine+Node22+dsh)
+        id: rootfs-cache
+        uses: actions/cache@v4
+        with:
+          path: build/root.tar.gz
+          key: rootfs-${{ hashFiles('scripts/build-rootfs.sh', 'rootfs/staging/package-lock.json') }}-v1
+
+      - name: Build iSH emulator CLI (host, ~15min)
+        if: steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: make emulator
+
+      - name: Build guest rootfs (in-emulator, ~40min)
+        if: steps.rootfs-cache.outputs.cache-hit != 'true'
+        run: make rootfs
+
+      - name: Verify rootfs present
+        run: |
+          ls -lh build/root.tar.gz build/root.tar.gz.sha256
+
+      - name: Generate Xcode project
+        run: ruby scripts/gen-xcode-project.rb
+
+      - name: Build app (unsigned, iphoneos)
+        run: |
+          xcodebuild -project DSH.xcodeproj -scheme DSH -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tail -40
+
+      - name: Pack IPA
+        run: |
+          APP="$(find build/dd -name '*.app' -type d | head -1)"
+          echo "APP=$APP"; test -n "$APP"
+          rm -rf pack_tmp dist && mkdir -p pack_tmp/Payload dist
+          cp -R "$APP" pack_tmp/Payload/
+          (cd pack_tmp && zip -qry ../dist/DSH_iSH_V1.ipa Payload)
+          ls -lh dist/DSH_iSH_V1.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DSH_iSH_V1_ipa
+          path: dist/DSH_iSH_V1.ipa
+          if-no-files-found: error
+
+      - name: Create/Update Release
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          gh release delete V1 --yes 2>/dev/null || true
+          gh release create V1 dist/DSH_iSH_V1.ipa \
+            --title "DSH iSH版 V1（未签名）" \
+            --notes "everettjf/dsh-ios 源码云构建产物。内嵌 iSH-ARM64 + Alpine 3.21 + Node 22 + dsh。未签名，需全能签/AltStore 重签后安装。实验项目，模拟器运行性能有限。" || true
+        env:
+          GH_TOKEN: ${{ github.token }}
