@@ -45,6 +45,9 @@ jobs:
 
       - name: Build app (unsigned, iphoneos)
         run: |
+          set -o pipefail
+          export PATH="$(python3 -m site --user-base)/bin:/opt/homebrew/bin:/opt/homebrew/opt/lld/bin:$PATH"
+          echo "meson=$(command -v meson) ninja=$(command -v ninja) ld.lld=$(command -v ld.lld)"
           xcodebuild -project DSH.xcodeproj -scheme DSH -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tail -40
@@ -56,6 +59,9 @@ jobs:
           rm -rf pack_tmp dist && mkdir -p pack_tmp/Payload dist
           cp -R "$APP" pack_tmp/Payload/
           (cd pack_tmp && zip -qry ../dist/DSH_iSH_V1.ipa Payload)
+          SIZE=$(stat -f%z dist/DSH_iSH_V1.ipa || stat -c%s dist/DSH_iSH_V1.ipa)
+          echo "IPA size: $SIZE bytes"
+          test "$SIZE" -gt 10000000 || { echo "!! IPA 小于 10MB，疑似空壳打包失败"; exit 1; }
           ls -lh dist/DSH_iSH_V1.ipa
 
       - name: Upload IPA artifact
