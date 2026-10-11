@@ -38,7 +38,8 @@ jobs:
 
       - name: Verify rootfs present
         run: |
-          ls -lh build/root.tar.gz build/root.tar.gz.sha256
+          ls -lh build/root.tar.gz
+          [ -f build/root.tar.gz.sha256 ] || shasum -a 256 build/root.tar.gz > build/root.tar.gz.sha256
 
       - name: Generate Xcode project
         run: ruby scripts/gen-xcode-project.rb
